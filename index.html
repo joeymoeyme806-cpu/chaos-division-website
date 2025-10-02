@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Space Invaders Balanced</title>
+<style>
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: sans-serif;
+    text-align: center;
+    overflow: hidden;
+}
+canvas {
+    display: block;
+    margin: auto;
+    background: radial-gradient(circle at center, #001, #000);
+}
+h1 {
+    color: #0ff;
+    text-shadow: 0 0 10px #0ff;
+}
+#scoreBoard, #healthDisplay {
+    font-size: 24px;
+    margin-top: 10px;
+}
+#endScreen {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    text-align: center;
+}
+#endScreen button {
+    font-size: 20px;
+    padding: 10px 20px;
+    margin-top: 10px;
+    cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div id="scoreBoard">Score: 0</div>
+<div id="healthDisplay">Health: 3</div>
+<div id="endScreen">
+  <h1 id="finalScore">Game Over! Score: 0</h1>
+  <button onclick="location.reload()">Play Again</button>
+</div>
+<canvas id="gameCanvas" width="600" height="600"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreBoard = document.getElementById('scoreBoard');
+const healthDisplay = document.getElementById('healthDisplay');
+const endScreen = document.getElementById('endScreen');
+const finalScore = document.getElementById('finalScore');
+
+let score = 0;
+let health = 3;
+let gameRunning = true;
+
+const player = { x: 270, y: 550, width: 60, height: 20, speed: 5 };
+const bullets = [];
+const enemyBullets = [];
+let enemies = [];
+let enemyDirection = 1;
+let keys = {};
+
+function createEnemies(){
+  enemies = [];
+  const rows = 4;
+  const cols = 6;
+  const alienColors = ['#f00','#0f0','#00f','#a0f','#fa0','#0ff','#f0a','#ff0']; // many colors
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      let type='alien';
+      let color = alienColors[Math.floor(Math.random()*alienColors.length)];
+      enemies.push({
+        x: 60+c*80 + Math.random()*10-5,
+        y: 50+r*50 + Math.random()*10-5,
+        width:40,
+        height:20,
+        type:type,
+        color:color,
+        hp:1,
+        alive:true
+      });
+    }
+  }
+}
+createEnemies();
+
+function update(){
+  if(!gameRunning) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Player movement
+  if(keys['a'] || keys['ArrowLeft']) player.x -= player.speed;
+  if(keys['d'] || keys['ArrowRight']) player.x += player.speed;
+  player.x = Math.max(0, Math.min(canvas.width-player.width, player.x));
+
+  // Draw player
+  ctx.fillStyle='#0f0';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+
+  // Update bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    let b = bullets[i];
+    b.y -= b.speed;
+    ctx.fillStyle='#ff0';
+    ctx.fillRect(b.x,b.y,b.width,b.height);
+    if(b.y<0) bullets.splice(i,1);
+  }
+
+  // Enemy movement
+  let shiftDown=false;
+  enemies.forEach(e=>{
+    if(!e.alive) return;
+    e.x += enemyDirection*1;
+    if(e.x + e.width > canvas.width || e.x < 0) shiftDown=true;
+  });
+  if(shiftDown){
+    enemyDirection*=-1;
+    enemies.forEach(e=>{
+      if(e.alive) e.y +=20;
+    });
+  }
+
+  // Draw enemies and shooting
+  enemies.forEach(e=>{
+    if(!e.alive) return;
+    ctx.fillStyle=e.color;
+    ctx.fillRect(e.x,e.y,e.width,e.height);
+    ctx.strokeStyle="#fff";
+    ctx.strokeRect(e.x,e.y,e.width,e.height);
+
+    // Reduced shooting rate
+    if(Math.random()<0.003){ // Lowered from 0.01 to 0.003
+      enemyBullets.push({x:e.x+e.width/2-3, y:e.y+e.height, width:6, height:15, speed:4});
+    }
+
+    // Collision with player
+    if(e.y + e.height >= player.y && e.y <= player.y + player.height && e.x + e.width >= player.x && e.x <= player.x + player.width){
+      e.alive=false;
+      health--;
+      healthDisplay.textContent='Health: '+health;
+      if(health<=0) endGame();
+    }
+  });
+
+  // Enemy bullets
+  for(let i=enemyBullets.length-1;i>=0;i--){
+    let b = enemyBullets[i];
+    b.y += b.speed;
+    ctx.fillStyle='#0ff';
+    ctx.fillRect(b.x,b.y,b.width,b.height);
+
+    if(b.y>canvas.height){
+      enemyBullets.splice(i,1);
+      continue;
+    }
+
+    if(b.x < player.x+player.width && b.x+b.width>player.x && b.y < player.y+player.height && b.y+b.height > player.y){
+      enemyBullets.splice(i,1);
+      health--;
+      healthDisplay.textContent='Health: '+health;
+      if(health<=0) endGame();
+    }
+  }
+
+  // Bullet collision
+  for(let i=bullets.length-1;i>=0;i--){
+    let b = bullets[i];
+    for(let j=enemies.length-1;j>=0;j--){
+      let e = enemies[j];
+      if(!e.alive) continue;
+      if(b.x < e.x+e.width && b.x+b.width > e.x && b.y < e.y+e.height && b.y+b.height > e.y){
+        bullets.splice(i,1);
+        e.hp--;
+        if(e.hp<=0){
+          e.alive=false;
+          score++;
+          scoreBoard.textContent='Score: '+score;
+        }
+        break;
+      }
+    }
+  }
+
+  if(enemies.every(e=>!e.alive)) createEnemies();
+
+  requestAnimationFrame(update);
+}
+
+function endGame(){
+  gameRunning=false;
+  finalScore.textContent='Game Over! Score: '+score;
+  endScreen.style.display='block';
+}
+
+document.addEventListener('keydown', e=>{
+  keys[e.key]=true;
+  if(e.code==='Space'){
+    bullets.push({x:player.x+player.width/2-5, y:player.y, width:10, height:20, speed:7});
+  }
+});
+document.addEventListener('keyup', e=> keys[e.key]=false);
+
+update();
+</script>
+</body>
+</html>
